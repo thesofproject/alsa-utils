@@ -27,6 +27,7 @@
 #include "pre-processor.h"
 #include "nhlt-processor.h"
 #include "nhlt.h"
+#include "intel/dmic-nhlt.h"
 
 #define MAX_ENDPOINT_COUNT 20
 
@@ -213,6 +214,8 @@ int nhlt_init(struct tplg_pre_processor *tplg_pp)
 	if (!tplg_pp)
 		return -EINVAL;
 
+	nhlt_dmic_init_params(tplg_pp);
+
 	return 0;
 }
 
@@ -249,6 +252,15 @@ int nhlt_create(struct tplg_pre_processor *tplg_pp)
 
 	for (i = 0; i < MAX_ENDPOINT_COUNT; i++)
 		eps[i] = NULL;
+
+	/* we always have only 0 or 1 dmic ep */
+	if (nhlt_dmic_get_ep_count(tplg_pp)) {
+		/* the index is always 0 in dmic case */
+		ret = nhlt_dmic_get_ep(tplg_pp, &eps[eps_count], 0);
+		if (ret < 0)
+			return ret;
+		eps_count++;
+	}
 
 	/* we don't have endpoints */
 	if (!eps_count)
@@ -304,6 +316,7 @@ int nhlt_set_dai(struct tplg_pre_processor *tplg_pp,
 		 snd_config_t *cfg, snd_config_t *parent)
 {
 	const char *id;
+	int ret;
 
 	if (!check_for_nhlt(tplg_pp))
 		return 0;
@@ -314,6 +327,11 @@ int nhlt_set_dai(struct tplg_pre_processor *tplg_pp,
 	tplg_pp_debug("nhlt_set_dai id %s", id);
 
 	/* set dai parameters here */
+	if (!strncmp(id, "DMIC", 4)) {
+		ret = nhlt_dmic_set_params(tplg_pp, cfg, parent);
+		if (ret < 0)
+			return ret;
+	}
 
 	return 0;
 }
