@@ -18,28 +18,17 @@
   in the file called LICENSE.GPL.
 */
 
-#ifndef __INTEL_NHLT_H
-#define __INTEL_NHLT_H
+#ifndef __SSP_NHLT_H
+#define __SSP_NHLT_H
 
-#define MIN(a, b) ({		\
-	typeof(a) __a = (a);	\
-	typeof(b) __b = (b);	\
-	__a > __b ? __b : __a;	\
-})
-#define MAX(a, b) ({		\
-	typeof(a) __a = (a);	\
-	typeof(b) __b = (b);	\
-	__a < __b ? __b : __a;	\
-})
+#include "pre-processor.h"
+#include "../nhlt.h"
 
-#define BIT(b)                  (1UL << (b))
-#define MASK(b_hi, b_lo)        (((1ULL << ((b_hi) - (b_lo) + 1ULL)) - 1ULL) << (b_lo))
-#define SET_BIT(b, x)           (((x) & 1) << (b))
-#define SET_BITS(b_hi, b_lo, x) (((x) & ((1ULL << ((b_hi) - (b_lo) + 1ULL)) - 1ULL)) << (b_lo))
+int nhlt_ssp_init_params(struct tplg_pre_processor *tplg_pp);
+int nhlt_ssp_set_params(struct tplg_pre_processor *tplg_pp, snd_config_t *cfg,
+			snd_config_t *parent);
+int nhlt_ssp_get_ep(struct tplg_pre_processor *tplg_pp, struct endpoint_descriptor **eps,
+		    int dai_index);
+int nhlt_ssp_get_ep_count(struct tplg_pre_processor *tplg_pp);
 
-struct intel_nhlt_params {
-	void *dmic_params;
-	void *ssp_params;
-};
-
-#endif /* __INTEL_NHLT_H */
+#endif

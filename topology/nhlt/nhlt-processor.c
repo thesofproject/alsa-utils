@@ -28,6 +28,7 @@
 #include "nhlt-processor.h"
 #include "nhlt.h"
 #include "intel/dmic-nhlt.h"
+#include "intel/ssp-nhlt.h"
 
 #define MAX_ENDPOINT_COUNT 20
 
@@ -215,6 +216,7 @@ int nhlt_init(struct tplg_pre_processor *tplg_pp)
 		return -EINVAL;
 
 	nhlt_dmic_init_params(tplg_pp);
+	nhlt_ssp_init_params(tplg_pp);
 
 	return 0;
 }
@@ -259,6 +261,14 @@ int nhlt_create(struct tplg_pre_processor *tplg_pp)
 		ret = nhlt_dmic_get_ep(tplg_pp, &eps[eps_count], 0);
 		if (ret < 0)
 			return ret;
+		eps_count++;
+	}
+
+	/* we can have 0 to several ssp eps */
+	for (i = 0; i < nhlt_ssp_get_ep_count(tplg_pp); i++) {
+		ret = nhlt_ssp_get_ep(tplg_pp, &eps[eps_count], i);
+		if (ret < 0)
+			goto err;
 		eps_count++;
 	}
 
@@ -329,6 +339,12 @@ int nhlt_set_dai(struct tplg_pre_processor *tplg_pp,
 	/* set dai parameters here */
 	if (!strncmp(id, "DMIC", 4)) {
 		ret = nhlt_dmic_set_params(tplg_pp, cfg, parent);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (!strncmp(id, "SSP", 3)) {
+		ret = nhlt_ssp_set_params(tplg_pp, cfg, parent);
 		if (ret < 0)
 			return ret;
 	}
