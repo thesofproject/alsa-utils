@@ -25,6 +25,7 @@ struct tplg_pre_processor {
 	snd_config_t *output_cfg;
 	snd_output_t *output;
 	snd_output_t *dbg_output;
+	void *private_data;
 };
 
 int pre_process(struct tplg_pre_processor *tplg_pp, char *config, size_t config_size,

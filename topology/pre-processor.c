@@ -30,6 +30,7 @@
 #include "gettext.h"
 #include "topology.h"
 #include "pre-processor.h"
+#include "nhlt/nhlt-processor.h"
 
 /*
  * Helper function to find config by id.
@@ -172,6 +173,7 @@ void free_pre_preprocessor(struct tplg_pre_processor *tplg_pp)
 	snd_output_close(tplg_pp->output);
 	snd_output_close(tplg_pp->dbg_output);
 	snd_config_delete(tplg_pp->output_cfg);
+	nhlt_delete(tplg_pp);
 	free(tplg_pp);
 }
 
@@ -211,6 +213,13 @@ int init_pre_processor(struct tplg_pre_processor **tplg_pp, snd_output_type_t ty
 	ret = snd_output_stdio_attach(&_tplg_pp->dbg_output, stdout, 0);
 	if (ret < 0) {
 		fprintf(stderr, "failed to open stdout output\n");
+		goto out_close;
+	}
+
+	/* allocate nhlt private data */
+	ret = nhlt_init(_tplg_pp);
+	if (ret < 0) {
+		fprintf(stderr, "failed to init nhlt processor\n");
 		goto out_close;
 	}
 
@@ -571,6 +580,13 @@ int pre_process(struct tplg_pre_processor *tplg_pp, char *config, size_t config_
 	err = pre_process_config(tplg_pp, tplg_pp->input_cfg);
 	if (err < 0) {
 		fprintf(stderr, "Unable to pre-process configuration\n");
+		goto err;
+	}
+
+	/* create nhlt blob and add it to manifest */
+	err = nhlt_create(tplg_pp);
+	if (err < 0) {
+		fprintf(stderr, "Unable to create nhlt\n");
 		goto err;
 	}
 

@@ -9,9 +9,10 @@ endif
 	rst2man $< > $@
 
 alsatplg_SOURCES = topology.c pre-processor.c pre-process-class.c pre-process-object.c \
-		    pre-process-dapm.c pre-process-dai.c
+		pre-process-dapm.c pre-process-dai.c nhlt/nhlt-processor.c
 
-noinst_HEADERS = topology.h pre-processor.h
+noinst_HEADERS = topology.h pre-processor.h \
+		nhlt/nhlt-processor.h nhlt/nhlt.h
 
 AM_CPPFLAGS = \
          -Wall -I$(top_srcdir)/include

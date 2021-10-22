@@ -26,6 +26,7 @@
 #include "gettext.h"
 #include "topology.h"
 #include "pre-processor.h"
+#include "nhlt/nhlt-processor.h"
 
 /* Parse VendorToken object, create the "SectionVendorToken" and save it */
 int tplg_build_vendor_token_object(struct tplg_pre_processor *tplg_pp,
@@ -934,6 +935,23 @@ static int tplg_build_generic_object(struct tplg_pre_processor *tplg_pp, snd_con
 	return ret;
 }
 
+static int tplg_update_dai_auto_attr(struct tplg_pre_processor *tplg_pp,
+				     snd_config_t *dai_cfg, snd_config_t *parent)
+{
+	const char *id;
+	int ret;
+
+	ret = snd_config_get_id(dai_cfg, &id);
+	if (ret < 0)
+		return ret;
+
+	tplg_pp_debug("entering dai auto attr id %s", id);
+
+	nhlt_set_dai(tplg_pp, dai_cfg, parent);
+
+	return 0;
+}
+
 const struct config_template_items pcm_caps_config = {
 	.int_config_ids = {"rate_min", "rate_max", "channels_min", "channels_max", "periods_min",
 			   "periods_max", "period_size_min", "period_size_max", "buffer_size_min",
@@ -1021,7 +1039,8 @@ const struct build_function_map object_build_map[] = {
 	 &mixer_control_config},
 	{"Control", "bytes", "SectionControlBytes", &tplg_build_bytes_control, NULL,
 	 &bytes_control_config},
-	{"Dai", "", "SectionBE", &tplg_build_generic_object, NULL, &be_dai_config},
+	{"Dai", "", "SectionBE", &tplg_build_generic_object, tplg_update_dai_auto_attr,
+	 &be_dai_config},
 	{"PCM", "pcm", "SectionPCM", &tplg_build_generic_object, NULL, &pcm_config},
 	{"PCM", "pcm_caps", "SectionPCMCapabilities", &tplg_build_pcm_caps_object,
 	 NULL, &pcm_caps_config},
