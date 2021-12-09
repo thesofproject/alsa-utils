@@ -25,10 +25,12 @@ struct tplg_pre_processor {
 	snd_config_t *output_cfg;
 	snd_output_t *output;
 	snd_output_t *dbg_output;
+	void *private_data;
 };
 
-int pre_process(struct tplg_pre_processor *tplg_pp, char *config, size_t config_size);
-int init_pre_precessor(struct tplg_pre_processor **tplg_pp, snd_output_type_t type,
+int pre_process(struct tplg_pre_processor *tplg_pp, char *config, size_t config_size,
+		const char *pre_processor_defs, const char *inc_path);
+int init_pre_processor(struct tplg_pre_processor **tplg_pp, snd_output_type_t type,
 		       const char *output_file);
 void free_pre_preprocessor(struct tplg_pre_processor *tplg_pp);
 #endif

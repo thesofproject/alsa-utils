@@ -122,11 +122,12 @@ struct loopback_handle {
 	unsigned int ctl_pollfd_count;
 	snd_ctl_elem_value_t *ctl_notify;
 	snd_ctl_elem_value_t *ctl_rate_shift;
-	snd_ctl_elem_value_t *capt_pitch;
+	snd_ctl_elem_value_t *ctl_pitch;
 	snd_ctl_elem_value_t *ctl_active;
 	snd_ctl_elem_value_t *ctl_format;
 	snd_ctl_elem_value_t *ctl_rate;
 	snd_ctl_elem_value_t *ctl_channels;
+	char *prateshift_name; /* ascii name for the playback rate shift ctl elem */
 };
 
 struct loopback {

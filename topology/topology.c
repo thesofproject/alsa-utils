@@ -56,6 +56,9 @@ _("Usage: %s [OPTIONS]...\n"
 "-u, --dump=FILE         dump (reparse) configuration file\n"
 "-v, --verbose=LEVEL     set verbosity level (0...1)\n"
 "-o, --output=FILE       set output file\n"
+#if SND_LIB_VER(1, 2, 5) < SND_LIB_VERSION
+"-D, --define=ARGS       define variables (VAR1=VAL1[,VAR2=VAL2] ...)\n"
+#endif
 "-s, --sort              sort the identifiers in the normalized output\n"
 "-g, --group             save configuration by group indexes\n"
 "-x, --nocheck           save configuration without additional integrity checks\n"
@@ -233,12 +236,26 @@ static int dump(const char *source_file, const char *output_file, int cflags, in
 	return err;
 }
 
+static char *get_inc_path(const char *filename)
+{
+	const char *s = strrchr(filename, '/');
+	char *r = strdup(filename);
+	if (r) {
+		if (s)
+			r[s - filename] = '\0';
+		else if (r[0])
+			strcpy(r, ".");
+	}
+	return r;
+}
+
 /* Convert Topology2.0 conf to the existing conf syntax */
-static int pre_process_conf(const char *source_file, const char *output_file)
+static int pre_process_conf(const char *source_file, const char *output_file,
+			    const char *pre_processor_defs)
 {
 	struct tplg_pre_processor *tplg_pp;
 	size_t config_size;
-	char *config;
+	char *config, *inc_path;
 	int err;
 
 	err = load(source_file, (void **)&config, &config_size);
@@ -246,7 +263,7 @@ static int pre_process_conf(const char *source_file, const char *output_file)
 		return err;
 
 	/* init pre-processor */
-	err = init_pre_precessor(&tplg_pp, SND_OUTPUT_STDIO, output_file);
+	err = init_pre_processor(&tplg_pp, SND_OUTPUT_STDIO, output_file);
 	if (err < 0) {
 		fprintf(stderr, _("failed to init pre-processor for Topology2.0\n"));
 		free(config);
@@ -254,7 +271,9 @@ static int pre_process_conf(const char *source_file, const char *output_file)
 	}
 
 	/* pre-process conf file */
-	err = pre_process(tplg_pp, config, config_size);
+	inc_path = get_inc_path(source_file);
+	err = pre_process(tplg_pp, config, config_size, pre_processor_defs, inc_path);
+	free(inc_path);
 
 	/* free pre-processor */
 	free_pre_preprocessor(tplg_pp);
@@ -262,11 +281,12 @@ static int pre_process_conf(const char *source_file, const char *output_file)
 	return err;
 }
 
-static int compile(const char *source_file, const char *output_file, int cflags)
+static int compile(const char *source_file, const char *output_file, int cflags,
+		   const char *pre_processor_defs)
 {
 	struct tplg_pre_processor *tplg_pp = NULL;
 	snd_tplg_t *tplg;
-	char *config;
+	char *config, *inc_path;
 	void *bin;
 	size_t config_size, size;
 	int err;
@@ -281,10 +301,12 @@ static int compile(const char *source_file, const char *output_file, int cflags)
 		size_t size;
 
 		/* init pre-processor */
-		init_pre_precessor(&tplg_pp, SND_OUTPUT_BUFFER, NULL);
+		init_pre_processor(&tplg_pp, SND_OUTPUT_BUFFER, NULL);
 
 		/* pre-process conf file */
-		err = pre_process(tplg_pp, config, config_size);
+		inc_path = get_inc_path(source_file);
+		err = pre_process(tplg_pp, config, config_size, pre_processor_defs, inc_path);
+		free(inc_path);
 		if (err) {
 			free_pre_preprocessor(tplg_pp);
 			free(config);
@@ -353,7 +375,11 @@ static int decode(const char *source_file, const char *output_file,
 
 int main(int argc, char *argv[])
 {
-	static const char short_options[] = "hc:d:n:u:v:o:pP:sgxzV";
+	static const char short_options[] = "hc:d:n:u:v:o:pP:sgxzV"
+#if SND_LIB_VER(1, 2, 5) < SND_LIB_VERSION
+		"D:"
+#endif
+		;
 	static const struct option long_options[] = {
 		{"help", 0, NULL, 'h'},
 		{"verbose", 1, NULL, 'v'},
@@ -363,6 +389,9 @@ int main(int argc, char *argv[])
 		{"normalize", 1, NULL, 'n'},
 		{"dump", 1, NULL, 'u'},
 		{"output", 1, NULL, 'o'},
+#if SND_LIB_VER(1, 2, 5) < SND_LIB_VERSION
+		{"define", 1, NULL, 'D'},
+#endif
 		{"sort", 0, NULL, 's'},
 		{"group", 0, NULL, 'g'},
 		{"nocheck", 0, NULL, 'x'},
@@ -372,6 +401,7 @@ int main(int argc, char *argv[])
 	};
 	char *source_file = NULL;
 	char *output_file = NULL;
+	const char *pre_processor_defs = NULL;
 	int c, err, op = 'c', cflags = 0, dflags = 0, sflags = 0, option_index;
 
 #ifdef ENABLE_NLS
@@ -423,6 +453,11 @@ int main(int argc, char *argv[])
 		case 'x':
 			sflags |= SND_TPLG_SAVE_NOCHECK;
 			break;
+#if SND_LIB_VER(1, 2, 5) < SND_LIB_VERSION
+		case 'D':
+			pre_processor_defs = optarg;
+			break;
+#endif
 		case 'V':
 			version(argv[0]);
 			return 0;
@@ -448,13 +483,13 @@ int main(int argc, char *argv[])
 
 	switch (op) {
 	case 'c':
-		err = compile(source_file, output_file, cflags);
+		err = compile(source_file, output_file, cflags, pre_processor_defs);
 		break;
 	case 'd':
 		err = decode(source_file, output_file, cflags, dflags, sflags);
 		break;
 	case 'P':
-		err = pre_process_conf(source_file, output_file);
+		err = pre_process_conf(source_file, output_file, pre_processor_defs);
 		break;
 	default:
 		err = dump(source_file, output_file, cflags, sflags);

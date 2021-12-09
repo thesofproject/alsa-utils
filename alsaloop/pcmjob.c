@@ -1063,9 +1063,10 @@ static int set_rate_shift(struct loopback_handle *lhandle, double pitch)
 	if (lhandle->ctl_rate_shift) {
 		snd_ctl_elem_value_set_integer(lhandle->ctl_rate_shift, 0, pitch * 100000);
 		err = snd_ctl_elem_write(lhandle->ctl, lhandle->ctl_rate_shift);
-	} else if (lhandle->capt_pitch) {
-		snd_ctl_elem_value_set_integer(lhandle->capt_pitch, 0, (1 / pitch) * 1000000);
-		err = snd_ctl_elem_write(lhandle->ctl, lhandle->capt_pitch);
+	} else if (lhandle->ctl_pitch) {
+		// 'Playback/Capture Pitch 1000000' requires reciprocal to pitch
+		snd_ctl_elem_value_set_integer(lhandle->ctl_pitch, 0, (1 / pitch) * 1000000);
+		err = snd_ctl_elem_write(lhandle->ctl, lhandle->ctl_pitch);
 	} else {
 		return 0;
 	}
@@ -1101,7 +1102,8 @@ void update_pitch(struct loopback *loop)
 #endif
 	}
 	else if (loop->sync == SYNC_TYPE_PLAYRATESHIFT) {
-		set_rate_shift(loop->play, pitch);
+		// pitch is capture-based, playback side requires reciprocal
+		set_rate_shift(loop->play, 1 / pitch);
 #ifdef USE_SAMPLERATE
 		if (loop->use_samplerate) {
 			loop->src_data.src_ratio = 
@@ -1172,27 +1174,57 @@ static int get_channels(struct loopback_handle *lhandle)
 	return snd_ctl_elem_value_get_integer(lhandle->ctl_channels, 0);
 }
 
-static void openctl_elem(struct loopback_handle *lhandle,
-			 int device, int subdevice,
-			 const char *name,
-			 snd_ctl_elem_value_t **elem)
+static int openctl_elem_id(struct loopback_handle *lhandle, snd_ctl_elem_id_t *id,
+		snd_ctl_elem_value_t **elem)
 {
 	int err;
 
 	if (snd_ctl_elem_value_malloc(elem) < 0) {
 		*elem = NULL;
-	} else {
-		snd_ctl_elem_value_set_interface(*elem,
-						 SND_CTL_ELEM_IFACE_PCM);
-		snd_ctl_elem_value_set_device(*elem, device);
-		snd_ctl_elem_value_set_subdevice(*elem, subdevice);
-		snd_ctl_elem_value_set_name(*elem, name);
-		err = snd_ctl_elem_read(lhandle->ctl, *elem);
-		if (err < 0) {
-			snd_ctl_elem_value_free(*elem);
-			*elem = NULL;
-		}
+		return -ENOMEM;
 	}
+	snd_ctl_elem_value_set_id(*elem, id);
+	snd_ctl_elem_value_set_interface(*elem, SND_CTL_ELEM_IFACE_PCM);
+	err = snd_ctl_elem_read(lhandle->ctl, *elem);
+	if (err < 0) {
+		snd_ctl_elem_value_free(*elem);
+		*elem = NULL;
+		return err;
+	} else {
+		snd_output_printf(lhandle->loopback->output,
+				"Opened PCM element %s of %s, device %d, subdevice %d\n",
+				snd_ctl_elem_id_get_name(id), snd_ctl_name(lhandle->ctl),
+				snd_ctl_elem_id_get_device(id),
+				snd_ctl_elem_id_get_subdevice(id));
+		return 0;
+	}
+}
+
+static int openctl_elem(struct loopback_handle *lhandle,
+			 int device, int subdevice,
+			 const char *name,
+			 snd_ctl_elem_value_t **elem)
+{
+	snd_ctl_elem_id_t *id;
+
+	snd_ctl_elem_id_alloca(&id);
+	snd_ctl_elem_id_set_device(id, device);
+	snd_ctl_elem_id_set_subdevice(id, subdevice);
+	snd_ctl_elem_id_set_name(id, name);
+	return openctl_elem_id(lhandle, id, elem);
+}
+
+static int openctl_elem_ascii(struct loopback_handle *lhandle, char *ascii_name,
+		snd_ctl_elem_value_t **elem)
+{
+	snd_ctl_elem_id_t *id;
+
+	snd_ctl_elem_id_alloca(&id);
+	if (snd_ctl_ascii_elem_id_parse(id, ascii_name)) {
+		fprintf(stderr, "Wrong control identifier: %s\n", ascii_name);
+		return -EINVAL;
+	}
+	return openctl_elem_id(lhandle, id, elem);
 }
 
 static int openctl(struct loopback_handle *lhandle, int device, int subdevice)
@@ -1201,16 +1233,30 @@ static int openctl(struct loopback_handle *lhandle, int device, int subdevice)
 
 	lhandle->ctl_rate_shift = NULL;
 	if (lhandle->loopback->play == lhandle) {
+		// play only
+		if (lhandle->prateshift_name) {
+			err = openctl_elem_ascii(lhandle, lhandle->prateshift_name,
+					&lhandle->ctl_rate_shift);
+			if (err < 0) {
+				logit(LOG_CRIT, "Unable to open playback PCM Rate Shift elem '%s'.\n",
+						lhandle->prateshift_name);
+				exit(EXIT_FAILURE);
+			}
+		} else
+			openctl_elem(lhandle, device, subdevice, "Playback Pitch 1000000",
+					&lhandle->ctl_pitch);
+		set_rate_shift(lhandle, 1);
 		if (lhandle->loopback->controls)
 			goto __events;
 		return 0;
 	}
+	// capture only
 	openctl_elem(lhandle, device, subdevice, "PCM Notify",
 			&lhandle->ctl_notify);
 	openctl_elem(lhandle, device, subdevice, "PCM Rate Shift 100000",
 			&lhandle->ctl_rate_shift);
 	openctl_elem(lhandle, device, subdevice, "Capture Pitch 1000000",
-			&lhandle->capt_pitch);
+			&lhandle->ctl_pitch);
 	set_rate_shift(lhandle, 1);
 	openctl_elem(lhandle, device, subdevice, "PCM Slave Active",
 			&lhandle->ctl_active);
@@ -1296,9 +1342,9 @@ static int closeit(struct loopback_handle *lhandle)
 	if (lhandle->ctl_rate_shift)
 		snd_ctl_elem_value_free(lhandle->ctl_rate_shift);
 	lhandle->ctl_rate_shift = NULL;
-	if (lhandle->capt_pitch)
-		snd_ctl_elem_value_free(lhandle->capt_pitch);
-	lhandle->capt_pitch = NULL;
+	if (lhandle->ctl_pitch)
+		snd_ctl_elem_value_free(lhandle->ctl_pitch);
+	lhandle->ctl_pitch = NULL;
 	if (lhandle->ctl)
 		err = snd_ctl_close(lhandle->ctl);
 	lhandle->ctl = NULL;
@@ -1344,9 +1390,9 @@ int pcmjob_init(struct loopback *loop)
 	snprintf(id, sizeof(id), "%s/%s", loop->play->id, loop->capt->id);
 	id[sizeof(id)-1] = '\0';
 	loop->id = strdup(id);
-	if (loop->sync == SYNC_TYPE_AUTO && (loop->capt->ctl_rate_shift || loop->capt->capt_pitch))
+	if (loop->sync == SYNC_TYPE_AUTO && (loop->capt->ctl_rate_shift || loop->capt->ctl_pitch))
 		loop->sync = SYNC_TYPE_CAPTRATESHIFT;
-	if (loop->sync == SYNC_TYPE_AUTO && loop->play->ctl_rate_shift)
+	if (loop->sync == SYNC_TYPE_AUTO && (loop->play->ctl_rate_shift || loop->play->ctl_pitch))
 		loop->sync = SYNC_TYPE_PLAYRATESHIFT;
 #ifdef USE_SAMPLERATE
 	if (loop->sync == SYNC_TYPE_AUTO && loop->src_enable)
