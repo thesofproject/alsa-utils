@@ -1610,6 +1610,140 @@ pre_process_object_variables_expand_fcn(snd_config_t **dst, const char *str, voi
 
 	return ret;
 }
+
+/*
+ * Special strsep implementation, that gives away the found separator and does not
+ * eat away extra delimiter characters.
+ */
+static char *tplg_strsep(char **stringp, const char *delim, char *sep)
+{
+	char *ret;
+	size_t i;
+
+	if (*stringp == NULL)
+		return NULL;
+
+	i = strcspn(*stringp, delim);
+	ret = *stringp;
+	*stringp = (*stringp) + i;
+	if (**stringp == '\0') {
+		*stringp = NULL;
+		return ret;
+	}
+
+	*sep = **stringp;
+	**stringp = '\0';
+	(*stringp)++;
+
+	return ret;
+}
+
+static int tplg_evaluate_config_string(struct tplg_pre_processor *tplg_pp,
+				    snd_config_t **dst, const char *s, const char *id, char *delim)
+{
+	char *str = strdup(s);
+	char *tmp, sep, prev_sep = '\0';
+	int ret;
+
+	if (!str)
+		return -ENOMEM;
+
+	/* evaluate the whole string the string is an arthmetic expression */
+	if ((s[0] == '$' && s[1] == '[')) {
+		ret = snd_config_evaluate_string(dst, s,
+						 pre_process_object_variables_expand_fcn, tplg_pp);
+		if (ret < 0)
+			goto out;
+
+		snd_config_set_id(*dst, id);
+		goto out;
+	}
+
+	*dst = NULL;
+
+	/* split the string and expand global definitions or object attribute values */
+	while ((tmp = tplg_strsep(&str, delim, &sep))) {
+		if (*tmp == '$') {
+			snd_config_t *tmp_config;
+
+			ret = snd_config_evaluate_string(&tmp_config, tmp,
+							 pre_process_object_variables_expand_fcn,
+							 tplg_pp);
+			if (ret < 0) 
+				goto out;
+			
+			if (*dst == NULL) {
+				*dst = tmp_config;
+			} else {
+				snd_config_type_t type = snd_config_get_type(tmp_config);
+				const char *current_str;
+				char *temp;
+
+				snd_config_get_string(*dst, &current_str);
+
+				/* concat the value based on type to the current string */
+				switch (type) {
+				case SND_CONFIG_TYPE_INTEGER:
+				{
+					long val;
+
+					snd_config_get_integer(tmp_config, &val);
+					temp = tplg_snprintf("%s%c%ld", current_str, prev_sep, val);
+					break;
+				}
+				case SND_CONFIG_TYPE_STRING:
+				{
+					const char *new_string;
+
+					snd_config_get_string(tmp_config, &new_string);
+					temp = tplg_snprintf("%s%c%s", current_str, prev_sep,
+							     new_string);
+					break;
+				}
+				default:
+					return -EINVAL;
+				}
+
+				ret = snd_config_set_string(*dst, temp);
+				free(temp);
+				snd_config_delete(tmp_config);
+				if (ret < 0)
+					goto out;
+			}
+		} else {
+			/* if dst is NULL, create a new config and set its string value */
+			if (*dst == NULL) {
+				ret = snd_config_make(dst, id, SND_CONFIG_TYPE_STRING);
+				if (ret < 0)
+					goto out;
+				ret = snd_config_set_string(*dst, tmp);
+				if (ret < 0)
+					goto out;
+			} else {
+				const char *current_str;
+				char *temp;
+
+				/* concat the new string */
+				snd_config_get_string(*dst, &current_str);
+				temp = tplg_snprintf("%s%c%s", current_str, sep, tmp);
+				ret = snd_config_set_string(*dst, temp);
+				free(temp);
+				if (ret < 0)
+					goto out;
+			}
+		}
+		prev_sep = sep;
+	}
+
+	free(str);
+	snd_config_set_id(*dst, id);
+
+	return 0;
+out:
+	free(str);
+	return ret;
+}
+
 #endif
 
 /* build object config and its child objects recursively */
@@ -1672,21 +1806,25 @@ static int tplg_build_object(struct tplg_pre_processor *tplg_pp, snd_config_t *n
 		if (snd_config_get_string(n, &s) < 0)
 			continue;
 
-		if (*s != '$')
+		if (!strstr(s, "$"))
 			goto validate;
 
 		tplg_pp->current_obj_cfg = obj_local;
 
-		/* expand config */
-		ret = snd_config_evaluate_string(&new, s, pre_process_object_variables_expand_fcn,
-						 tplg_pp);
+		/*
+		 * Expand definitions and object attribute references, treat . and space
+		 * as delimiters.
+		 */
+		ret = tplg_evaluate_config_string(tplg_pp, &new, s, id, " .");
 		if (ret < 0) {
-			SNDERR("Failed to evaluate attributes %s in %s\n", id, class_id);
+			SNDERR("Failed to evaluate attribute %s in %s in the first pass\n",
+			       id, class_id);
 			return ret;
 		}
 
-		snd_config_set_id(new, id);
-
+		if (snd_config_get_string(new, &s) >= 0)
+			printf("KAKE %s\n", s);
+		
 		ret = snd_config_merge(n, new, true);
 		if (ret < 0)
 			return ret;

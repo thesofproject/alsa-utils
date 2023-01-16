@@ -686,6 +686,8 @@ int pre_process(struct tplg_pre_processor *tplg_pp, char *config, size_t config_
 		goto err;
 	}
 
+	tplg_pp_config_debug(tplg_pp, tplg_pp->output_cfg);
+
 	/* process topology plugins */
 	err = pre_process_plugins(tplg_pp);
 	if (err < 0) {
