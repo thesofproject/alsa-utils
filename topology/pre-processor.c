@@ -485,9 +485,12 @@ static int pre_process_include_conf(struct tplg_pre_processor *tplg_pp, snd_conf
 		snd_input_t *in;
 		snd_config_t *n;
 		regex_t regex;
-		const char *filename;
+		const char *matched_value;
 		const char *id;
 		char *full_path;
+		char *file_ext;
+		bool is_conf_file;
+		const char* conf_file_ext = ".conf";
 
 		n = snd_config_iterator_entry(i);
 		if (snd_config_get_id(n, &id) < 0)
@@ -504,23 +507,39 @@ static int pre_process_include_conf(struct tplg_pre_processor *tplg_pp, snd_conf
 		if (ret)
 			continue;
 
-		/* regex matched. now include the conf file */
-		ret = snd_config_get_string(n, &filename);
+		/* regex matched. get the value for the matched key */
+		ret = snd_config_get_string(n, &matched_value);
 		if (ret < 0)
 			goto err;
 
-		if (filename && filename[0] != '/')
-			full_path = tplg_snprintf("%s/%s", tplg_pp->inc_path, filename);
-		else
-			full_path = tplg_snprintf("%s", filename);
 
-		ret = snd_input_stdio_open(&in, full_path, "r");
-		if (ret < 0) {
-			fprintf(stderr, "Unable to open included conf file %s\n", full_path);
+		/*
+		 * Check whether the value for the matched key is a conf file or conf block,
+		 * If it ends with '.conf', it is a conf file, otherwise, it is conf block.
+		 */
+		file_ext = matched_value + strlen(matched_value) - strlen(conf_file_ext);
+		is_conf_file = !strcmp(file_ext, conf_file_ext);
+
+		if (is_conf_file) {
+			if (matched_value[0] != '/')
+				full_path = tplg_snprintf("%s/%s", tplg_pp->inc_path, matched_value);
+			else
+				full_path = tplg_snprintf("%s", matched_value);
+
+			ret = snd_input_stdio_open(&in, full_path, "r");
+			if (ret < 0) {
+				fprintf(stderr, "Unable to open included conf file %s\n", full_path);
+				free(full_path);
+				goto err;
+			}
 			free(full_path);
-			goto err;
+		} else {
+			ret = snd_input_buffer_open(&in, matched_value, -1);
+			if (ret < 0) {
+				fprintf(stderr, "Unable to open buffer for conf input\n");
+				goto err;
+			}
 		}
-		free(full_path);
 
 		/* load config */
 		ret = snd_config_load(*new, in);
