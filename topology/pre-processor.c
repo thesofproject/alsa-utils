@@ -493,7 +493,7 @@ static int pre_process_include_conf(struct tplg_pre_processor *tplg_pp, snd_conf
 		if (snd_config_get_id(n, &id) < 0)
 			continue;
 
-		ret = regcomp(&regex, id, 0);
+		ret = regcomp(&regex, id, REG_EXTENDED);
 		if (ret) {
 			fprintf(stderr, "Could not compile regex\n");
 			goto err;
