@@ -509,7 +509,6 @@ static int pre_process_include_conf(struct tplg_pre_processor *tplg_pp, snd_conf
 			/* configuration block */
 			ret = snd_config_merge(*new, n, 0);
 			if (ret < 0) {
-				fprintf(stderr, "Unable to merge key '%s'\n", value);
 				goto err;
 			}
 		} else {
