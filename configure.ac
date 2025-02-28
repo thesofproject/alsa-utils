@@ -218,7 +218,7 @@ AC_ARG_WITH(
         if test "x$udevdir" = "x"; then
             udevrulesdir="/lib/udev/rules.d"
         else
-            udevrulesdir="$udevdir/rules.d"
+            udevrulesdir="$udevrulesdir/rules.d"
         fi])
 AC_SUBST(udevrulesdir)
 
