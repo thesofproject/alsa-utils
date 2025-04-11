@@ -483,7 +483,7 @@ AC_SUBST(ALSA_TOPOLOGY_PLUGIN_DIR)
 
 AC_OUTPUT(Makefile alsactl/Makefile alsactl/init/Makefile \
 	  alsamixer/Makefile amidi/Makefile amixer/Makefile \
-	  m4/Makefile po/Makefile.in \
+	  m4/Makefile \
 	  alsaconf/alsaconf alsaconf/Makefile \
 	  alsaconf/po/Makefile \
 	  alsaucm/Makefile topology/Makefile topology/nhlt/Makefile \
